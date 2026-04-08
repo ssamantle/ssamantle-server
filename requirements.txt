@@ -1,0 +1,13 @@
+fastapi==0.135.3
+uvicorn[standard]==0.44.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+python-multipart==0.0.24
+python-dotenv==1.2.2
+
+# 추가로 필요한 패키지들 (필요시)
+# sqlalchemy==2.0.0  # 데이터베이스 ORM
+# psycopg2-binary==2.9.0  # PostgreSQL 드라이버
+# httpx==0.25.0  # HTTP 클라이언트
+# pytest==7.4.0  # 테스트 프레임워크
+
