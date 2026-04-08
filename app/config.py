@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -16,6 +17,11 @@ class Settings(BaseSettings):
     # 환경
     environment: str = "development"
     debug: bool = True
+    
+    # FastText 벡터 설정 (절대 경로)
+    vector_db_path: str = str(Path(__file__).parent.parent / "data" / "vectors.db")
+    words_list_path: str = str(Path(__file__).parent.parent / "data" / "filtered_words.txt")
+    secrets_path: str = str(Path(__file__).parent.parent / "data" / "daily_secrets_2026.json")
     
     class Config:
         env_file = ".env"

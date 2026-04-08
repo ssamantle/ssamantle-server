@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
-from app.api.routes import items, health
+from app.api.routes import items, health, similarity
 
 # 설정 로드
 settings = get_settings()
@@ -26,6 +26,7 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(health.router)
 app.include_router(items.router)
+app.include_router(similarity.router)
 
 
 @app.get("/")
