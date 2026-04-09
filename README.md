@@ -97,7 +97,7 @@ wget https://github.com/spellcheck-ko/hunspell-dict-ko/raw/master/ko-aff-dic-0.7
 # filter_words.py 실행 (원본 FastText-test 레포에서 복사)
 python scripts/filter_words.py --vec-path cc.ko.300.vec.gz \
   --output data/filtered_words.txt \
-  --hunspell-dic ko-aff-dic-0.7.92.dic
+  # --hunspell-dic ko-aff-dic-0.7.92.dic
 ```
 
 ### 3. 벡터 DB 생성

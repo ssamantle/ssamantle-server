@@ -1,23 +1,43 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import get_settings
-from app.api.routes import items, health, similarity
+from starlette.middleware.sessions import SessionMiddleware
 
-# 설정 로드
+from app.config import get_settings
+from app.db.database import create_tables
+from app.api.routes import health, similarity
+from app.api.routes import users, games
+
 settings = get_settings()
 
-# FastAPI 앱 생성
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    create_tables()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     description="FastAPI 기반 백엔드 서비스",
     version=settings.app_version,
-    debug=settings.debug
+    debug=settings.debug,
+    lifespan=lifespan,
 )
 
-# CORS 설정
+# 세션 미들웨어 (쿠키 이름: SESSION)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie="SESSION",
+    https_only=False,  # 개발 환경 — 운영에서는 True로 변경
+)
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실제 배포시에는 구체적인 도메인으로 제한
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,24 +45,25 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(health.router)
-app.include_router(items.router)
+
 app.include_router(similarity.router)
+app.include_router(users.router)
+app.include_router(games.router)
+
+
+@app.on_event("startup")
+def startup():
+    create_tables()
 
 
 @app.get("/")
 async def root():
-    """루트 엔드포인트"""
     return {
         "message": f"{settings.app_name}에 오신 것을 환영합니다!",
-        "version": settings.app_version
+        "version": settings.app_version,
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True  # 개발 모드에서 자동 리로드
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
