@@ -1,0 +1,22 @@
+version: '3.0'
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+
+services:
+  redis:
+    image: redis:7.0
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - '6380:6379'
+    volumes:
+      - redis_data:/data
+    command: [ "redis-server", "--appendonly", "yes" ]
+    networks:
+      - backend
