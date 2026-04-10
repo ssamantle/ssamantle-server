@@ -57,3 +57,7 @@ data/
 *.vec.gz
 vectors.db
 *.db
+
+# 가상환경
+.venv
+.venv/
