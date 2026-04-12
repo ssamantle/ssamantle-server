@@ -33,3 +33,17 @@ class Participant(Base):
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     game = relationship("Game", back_populates="participants")
+    guesses = relationship("GuessHistory", back_populates="participant", cascade="all, delete-orphan")
+
+
+class GuessHistory(Base):
+    __tablename__ = "guess_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    participant_id = Column(Integer, ForeignKey("participants.id"), nullable=False)
+    word = Column(String, nullable=False)
+    similarity = Column(Float, nullable=False)
+    is_answer = Column(Boolean, default=False)
+    submitted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    participant = relationship("Participant", back_populates="guesses")

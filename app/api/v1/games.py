@@ -1,20 +1,21 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.db.database import get_db
 from app.db.enums import GameStatus
-from app.db.models import Game, Participant
+from app.db.models import Game, GuessHistory, Participant
 from app.schemas.game import (
     CreateGameRequest,
     CreateGameResponse,
-    GamePollingResponse,
+    GameInfoResponse,
     GameResultResponse,
     GameStatusResponse,
+    GuessHistoryItem,
     GuessRequest,
     GuessResponse,
     JoinGameRequest,
@@ -24,13 +25,13 @@ from app.schemas.game import (
     ParticipantResult,
     UpdateEndtimeRequest,
     UpdateWordRequest,
+    UserInfo,
 )
 from app.api.routes.games import (
     get_vector_db,
     get_redis,
     get_session,
     sync_game_status,
-    get_leaderboard,
     _get_game_or_404,
 )
 
@@ -78,7 +79,8 @@ def create_game(
         game.started_at = body.startTime
         game.ended_at = body.endTime
         game.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.query(Participant).filter(Participant.game_id == V1_GAME_ID).delete()
+        for participant in db.query(Participant).filter(Participant.game_id == V1_GAME_ID).all():
+            db.delete(participant)
     else:
         game = Game(
             id=V1_GAME_ID,
@@ -145,17 +147,6 @@ def join_game(
 
 
 # ═══════════════════════════════════════════════════════════════
-# 게임 상태 폴링  GET /api/v1/games/status
-# ═══════════════════════════════════════════════════════════════
-@router.get("/status", response_model=GameStatusResponse)
-def game_status(db: Session = Depends(get_db)):
-    game = _get_game_or_404(V1_GAME_ID, db)
-    status = sync_game_status(game, db)
-    count = db.query(Participant).filter(Participant.game_id == V1_GAME_ID).count()
-    return GameStatusResponse(gameId=V1_GAME_ID, gameStatus=status, participationCount=count)
-
-
-# ═══════════════════════════════════════════════════════════════
 # 시간 수정 (Host)  PATCH /api/v1/games/time
 # ═══════════════════════════════════════════════════════════════
 @router.patch("/time", response_model=MessageResponse)
@@ -205,11 +196,9 @@ def update_word(
 @router.post("/guess", response_model=GuessResponse)
 def guess_word(
     body: GuessRequest,
-    request: Request,
+    authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    session = get_session(request)
-
     game = _get_game_or_404(V1_GAME_ID, db)
     sync_game_status(game, db)
 
@@ -217,15 +206,19 @@ def guess_word(
         raise HTTPException(status_code=400, detail="게임이 진행 중이 아닙니다.")
 
     word = body.word.strip()
-    if not word:
+    username = body.username.strip()
+    if not word or not username:
         raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+
+    parts = authorization.split()
+    session_id = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
 
     participant = (
         db.query(Participant)
-        .filter(Participant.game_id == V1_GAME_ID, Participant.nickname == session["nickname"])
+        .filter(Participant.game_id == V1_GAME_ID, Participant.nickname == username)
         .first()
     )
-    if not participant:
+    if not participant or participant.session_id != session_id:
         raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
 
     vdb = get_vector_db()
@@ -242,13 +235,20 @@ def guess_word(
     raw_sim = vdb.cosine_similarity(w_vec, w_norm, t_vec, t_norm)
     similarity = round(max(0.0, raw_sim), 4)
 
-    is_correct = word == game.target_word
+    is_answer = word == game.target_word
 
     if similarity > participant.best_similarity:
         participant.best_similarity = similarity
         participant.closest_word = word
-    if is_correct:
+    if is_answer:
         participant.is_correct = True
+
+    db.add(GuessHistory(
+        participant_id=participant.id,
+        word=word,
+        similarity=similarity,
+        is_answer=is_answer,
+    ))
     db.commit()
 
     r = get_redis()
@@ -259,40 +259,47 @@ def guess_word(
     game_rank = (rank_idx or 0) + 1
 
     return GuessResponse(
-        word=word,
+        label=word,
         similarity=similarity,
-        gameRank=game_rank,
-        isCorrect=is_correct,
-        bestSimilarity=round(participant.best_similarity, 4),
-        closestWord=participant.closest_word or word,
+        rank=game_rank,
+        isAnswer=is_answer,
     )
 
 
 # ═══════════════════════════════════════════════════════════════
 # 게임 정보 폴링  GET /api/v1/games/polling
 # ═══════════════════════════════════════════════════════════════
-@router.get("/polling", response_model=GamePollingResponse)
+@router.get("/polling", response_model=GameInfoResponse)
 def game_polling(db: Session = Depends(get_db)):
     game = _get_game_or_404(V1_GAME_ID, db)
-    status = sync_game_status(game, db)
-    count = db.query(Participant).filter(Participant.game_id == V1_GAME_ID).count()
+    sync_game_status(game, db)
 
-    r = get_redis()
-    leaderboard = get_leaderboard(r, V1_GAME_ID)
+    participants = (
+        db.query(Participant)
+        .filter(Participant.game_id == V1_GAME_ID)
+        .order_by(Participant.best_similarity.desc())
+        .all()
+    )
 
-    return GamePollingResponse(gameStatus=status, participationCount=count, leaderboard=leaderboard)
+    users = [
+        UserInfo(
+            name=p.nickname,
+            bestSimilarity=round(p.best_similarity, 4),
+            rank=i + 1,
+        )
+        for i, p in enumerate(participants)
+    ]
+
+    to_unix_ms = lambda dt: int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000) if dt else None
+
+    return GameInfoResponse(
+        startAt=to_unix_ms(game.started_at),
+        endAt=to_unix_ms(game.ended_at),
+        users=users,
+    )
 
 
-# ═══════════════════════════════════════════════════════════════
-# 리더보드  GET /api/v1/games/leaderboard
-# ═══════════════════════════════════════════════════════════════
-@router.get("/leaderboard", response_model=LeaderboardResponse)
-def leaderboard(db: Session = Depends(get_db)):
-    _get_game_or_404(V1_GAME_ID, db)
-    r = get_redis()
-    return LeaderboardResponse(leaderboard=get_leaderboard(r, V1_GAME_ID))
-
-
+# TODO: 무슨 결과를 조회할지 논의 필요 (참가자별 추측 기록? 전체 랭킹? 등등)
 # ═══════════════════════════════════════════════════════════════
 # 결과 조회  GET /api/v1/games/result
 # ═══════════════════════════════════════════════════════════════
@@ -345,3 +352,38 @@ def end_game(
     db.commit()
 
     return MessageResponse(message="게임이 종료되었습니다.")
+
+
+# ═══════════════════════════════════════════════════════════════
+# 추측 기록 조회  GET /api/v1/games/guesses
+# ═══════════════════════════════════════════════════════════════
+@router.get("/guesses", response_model=list[GuessHistoryItem])
+def get_guess_history(
+    username: str,
+    db: Session = Depends(get_db),
+):
+    participant = (
+        db.query(Participant)
+        .filter(Participant.game_id == V1_GAME_ID, Participant.nickname == username)
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="참가자를 찾을 수 없습니다.")
+
+    r = get_redis()
+
+    result = []
+    for g in participant.guesses:
+        if g.similarity == participant.best_similarity:
+            rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
+            rank = (rank_idx or 0) + 1 if rank_idx is not None else -1
+        else:
+            rank = -1
+        result.append(GuessHistoryItem(
+            label=g.word,
+            similarity=g.similarity,
+            rank=rank,
+            isAnswer=g.is_answer,
+        ))
+
+    return result

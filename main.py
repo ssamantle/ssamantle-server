@@ -9,6 +9,7 @@ from app.db.database import create_tables
 from app.api.routes import health, similarity
 from app.api.routes import users  # , games
 from app.api.v1 import games as games_v1
+from app.api.v1 import auth as auth_v1
 
 settings = get_settings()
 
@@ -51,6 +52,7 @@ app.include_router(similarity.router)
 app.include_router(users.router)
 # app.include_router(games.router)
 app.include_router(games_v1.router)
+app.include_router(auth_v1.router)
 
 
 @app.on_event("startup")
