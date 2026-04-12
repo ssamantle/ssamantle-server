@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./semantle.db"
 
     # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://localhost:6380/0"
 
     # 세션
     secret_key: str = "dev-secret-key-change-in-production"

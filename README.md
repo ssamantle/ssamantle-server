@@ -113,6 +113,7 @@ python scripts/process_vecs.py --vec-path cc.ko.300.vec.gz \
 
 ```bash
 # generate_secrets.py 실행 (원본 FastText-test 레포에서 복사)
+# 선택사항
 python scripts/generate_secrets.py --word-list data/filtered_words.txt \
   --year 2026 \
   --output data/daily_secrets_2026.json

@@ -242,7 +242,7 @@ def game_status(game_id: int, db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════
 # 게임 시간 수정 (Host)  PATCH /api/games/{gameId}/endtime
 # ═══════════════════════════════════════════════════════════════
-@router.patch("/{game_id}/endtime", response_model=MessageResponse)
+@router.patch("/{game_id}/time", response_model=MessageResponse)
 def update_endtime(
     game_id: int,
     body: UpdateEndtimeRequest,
@@ -347,13 +347,13 @@ def guess_word(
 
     # TODO: Redis 연동 후 주석 제거
     # Redis 리더보드 갱신
-    #r = get_redis()
-    #r.zadd(f"game:{game_id}:leaderboard", {participant.nickname: participant.best_similarity})
-    #r.set(f"game:{game_id}:closest:{participant.nickname}", participant.closest_word or word)
+    r = get_redis()
+    r.zadd(f"game:{game_id}:leaderboard", {participant.nickname: participant.best_similarity})
+    r.set(f"game:{game_id}:closest:{participant.nickname}", participant.closest_word or word)
 
     # 현재 랭킹 조회 (0-indexed → 1-indexed)
-    #rank_idx = r.zrevrank(f"game:{game_id}:leaderboard", participant.nickname)
-    #game_rank = (rank_idx or 0) + 1
+    rank_idx = r.zrevrank(f"game:{game_id}:leaderboard", participant.nickname)
+    game_rank = (rank_idx or 0) + 1
 
     return GuessResponse(
         word=word,
@@ -394,6 +394,7 @@ def leaderboard(game_id: int, db: Session = Depends(get_db)):
     return LeaderboardResponse(leaderboard=get_leaderboard(r, game_id))
 
 
+# TODO: 결과는 게임 끝날 때만 조회 가능
 # ═══════════════════════════════════════════════════════════════
 # 결과 조회  GET /api/games/{gameId}/result
 # ═══════════════════════════════════════════════════════════════

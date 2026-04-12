@@ -48,7 +48,7 @@ def read_fasttext_vocab(vec_path: Path) -> Iterable[str]:
 
 
 def is_valid_korean_word(word: str) -> bool:
-    return len(word) >= 2 and HANGUL_REGEX.match(word) is not None
+    return len(word) >= 1 and HANGUL_REGEX.match(word) is not None
 
 
 def filter_words(
