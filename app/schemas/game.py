@@ -13,6 +13,7 @@ class CreateGameRequest(BaseModel):
 
 class CreateGameResponse(BaseModel):
     gameId: int
+    sessionId: str
 
 
 # ─── 게임 참가 ───────────────────────────────────────────────
@@ -23,6 +24,7 @@ class JoinGameRequest(BaseModel):
 class JoinGameResponse(BaseModel):
     gameId: int
     nickname: str
+    sessionId: str
 
 
 # ─── 게임 상태 폴링 ──────────────────────────────────────────

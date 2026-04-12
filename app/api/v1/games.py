@@ -101,7 +101,7 @@ def create_game(
     request.session["game_id"] = V1_GAME_ID
     request.session["is_host"] = True
 
-    return CreateGameResponse(gameId=V1_GAME_ID)
+    return CreateGameResponse(gameId=V1_GAME_ID, sessionId=session_id)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -143,7 +143,7 @@ def join_game(
     request.session["is_host"] = False
     request.session["participant_id"] = participant.id
 
-    return JoinGameResponse(gameId=V1_GAME_ID, nickname=nickname)
+    return JoinGameResponse(gameId=V1_GAME_ID, nickname=nickname, sessionId=session_id)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -251,17 +251,17 @@ def guess_word(
     ))
     db.commit()
 
-    r = get_redis()
-    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
-    r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word)
+    #r = get_redis()
+    #r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
+    #r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word)
 
-    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
-    game_rank = (rank_idx or 0) + 1
+    #rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
+    #game_rank = (rank_idx or 0) + 1
 
     return GuessResponse(
         label=word,
         similarity=similarity,
-        rank=game_rank,
+        rank=1,
         isAnswer=is_answer,
     )
 
@@ -360,15 +360,19 @@ def end_game(
 @router.get("/guesses", response_model=list[GuessHistoryItem])
 def get_guess_history(
     username: str,
+    authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
+    parts = authorization.split()
+    session_id = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
+
     participant = (
         db.query(Participant)
         .filter(Participant.game_id == V1_GAME_ID, Participant.nickname == username)
         .first()
     )
-    if not participant:
-        raise HTTPException(status_code=404, detail="참가자를 찾을 수 없습니다.")
+    if not participant or participant.session_id != session_id:
+        raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
 
     r = get_redis()
 
