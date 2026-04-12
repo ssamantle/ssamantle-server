@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Foreig
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.db.database import Base
+from app.db.enums import GameStatus
 
 
 class Game(Base):
@@ -11,7 +12,7 @@ class Game(Base):
     hostname = Column(String, nullable=False)
     host_session_id = Column(String, nullable=False)
     target_word = Column(String, nullable=False)
-    status = Column(String, default="WAITING")  # WAITING | ACTIVE | ENDED
+    status = Column(String, default=GameStatus.PREGAME)
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
