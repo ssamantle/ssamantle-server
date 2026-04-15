@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 from app.config import get_settings
 from app.db.database import get_db
+from app.db.enums import GameStatus
 from app.db.models import Game, Participant
 from app.schemas.game import (
     CreateGameRequest,
@@ -87,16 +88,16 @@ def sync_game_status(game: Game, db: Session) -> str:
     started_at / ended_at 기준으로 상태를 자동 전환하고 DB에 반영한다.
     실제 상태 문자열을 반환한다.
     """
-    if game.status == "ENDED":
-        return "ENDED"
+    if game.status == GameStatus.POSTGAME:
+        return GameStatus.POSTGAME
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     new_status = game.status
 
     if game.ended_at and now >= game.ended_at:
-        new_status = "ENDED"
+        new_status = GameStatus.POSTGAME
     elif game.started_at and now >= game.started_at:
-        new_status = "ACTIVE"
+        new_status = GameStatus.INGAME
 
     if new_status != game.status:
         game.status = new_status
@@ -150,9 +151,9 @@ def create_game(
     # 초기 상태: startTime이 현재보다 이전이면 바로 ACTIVE
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     if body.startTime and body.startTime.replace(tzinfo=None) <= now:
-        initial_status = "ACTIVE"
+        initial_status = GameStatus.INGAME
     else:
-        initial_status = "WAITING"
+        initial_status = GameStatus.PREGAME
 
     game = Game(
         hostname=body.hostname.strip(),
@@ -188,7 +189,7 @@ def join_game(
     game = _get_game_or_404(game_id, db)
     sync_game_status(game, db)
 
-    if game.status == "ENDED":
+    if game.status == GameStatus.POSTGAME:
         raise HTTPException(status_code=400, detail="이미 종료된 게임입니다.")
 
     nickname = body.nickname.strip()
@@ -274,7 +275,7 @@ def update_word(
     get_host_session(request, game_id)
     game = _get_game_or_404(game_id, db)
 
-    if game.status != "WAITING":
+    if game.status != GameStatus.PREGAME:
         raise HTTPException(status_code=400, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
 
     if not body.targetWord.strip():
@@ -300,7 +301,7 @@ def guess_word(
     game = _get_game_or_404(game_id, db)
     sync_game_status(game, db)
 
-    if game.status != "ACTIVE":
+    if game.status != GameStatus.INGAME:
         raise HTTPException(status_code=400, detail="게임이 진행 중이 아닙니다.")
 
     word = body.word.strip()
@@ -445,7 +446,7 @@ def end_game(
         )
 
     game = _get_game_or_404(game_id, db)
-    game.status = "ENDED"
+    game.status = GameStatus.POSTGAME
     if not game.ended_at:
         game.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()

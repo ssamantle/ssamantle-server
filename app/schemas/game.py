@@ -13,6 +13,7 @@ class CreateGameRequest(BaseModel):
 
 class CreateGameResponse(BaseModel):
     gameId: int
+    sessionId: str
 
 
 # ─── 게임 참가 ───────────────────────────────────────────────
@@ -23,6 +24,7 @@ class JoinGameRequest(BaseModel):
 class JoinGameResponse(BaseModel):
     gameId: int
     nickname: str
+    sessionId: str
 
 
 # ─── 게임 상태 폴링 ──────────────────────────────────────────
@@ -45,16 +47,15 @@ class UpdateWordRequest(BaseModel):
 
 # ─── 단어 입력 ───────────────────────────────────────────────
 class GuessRequest(BaseModel):
+    username: str
     word: str
 
 
 class GuessResponse(BaseModel):
-    word: str
+    label: str
     similarity: float
-    gameRank: int
-    isCorrect: bool
-    bestSimilarity: float
-    closestWord: str
+    rank: int
+    isAnswer: bool
 
 
 # ─── 리더보드 ────────────────────────────────────────────────
@@ -89,6 +90,31 @@ class GameResultResponse(BaseModel):
     startedAt: Optional[datetime]
     endedAt: Optional[datetime]
     participants: List[ParticipantResult]
+
+
+# ─── v1 추측 기록 ────────────────────────────────────────────
+class GuessHistoryRequest(BaseModel):
+    username: str
+
+
+class GuessHistoryItem(BaseModel):
+    label: str
+    similarity: float
+    rank: int
+    isAnswer: bool
+
+
+# ─── v1 게임 정보 폴링 ───────────────────────────────────────
+class UserInfo(BaseModel):
+    name: str
+    bestSimilarity: float
+    rank: int
+
+
+class GameInfoResponse(BaseModel):
+    startAt: Optional[int]   # Unix ms
+    endAt: Optional[int]     # Unix ms
+    users: List[UserInfo]
 
 
 # ─── 공통 메시지 ─────────────────────────────────────────────
