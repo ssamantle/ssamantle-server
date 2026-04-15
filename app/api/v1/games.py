@@ -78,7 +78,7 @@ def create_game(
         game.status = initial_status
         game.started_at = body.startTime
         game.ended_at = body.endTime
-        game.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        game.created_at = datetime.now(timezone.utc).replace(tzinfo=None) # TODO: TIMEZONE을 한국시간으로 변경
         for participant in db.query(Participant).filter(Participant.game_id == V1_GAME_ID).all():
             db.delete(participant)
     else:
@@ -96,7 +96,7 @@ def create_game(
     db.commit()
     db.refresh(game)
 
-    request.session["session_id"] = session_id
+    request.session["session_id"] = session_id # TODO: sessionId는 쿠키로 전송하자.
     request.session["nickname"] = body.hostname.strip()
     request.session["game_id"] = V1_GAME_ID
     request.session["is_host"] = True
