@@ -137,6 +137,10 @@ def join_game(
     db.commit()
     db.refresh(participant)
 
+    # Redis 리더보드에 초기값 등록
+    r = get_redis()
+    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {nickname: 0.0}, nx=True) # nx=True로 기존 참가자 점수 덮어쓰기 방지
+
     request.session["session_id"] = session_id
     request.session["nickname"] = nickname
     request.session["game_id"] = V1_GAME_ID
@@ -253,7 +257,7 @@ def guess_word(
 
     r = get_redis()
     r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
-    r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word)
+    # r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word) # TODO: 최대 유사도 단어도 캐싱이 필요할 경우 주석 해제
 
     rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
     game_rank = (rank_idx or 0) + 1
@@ -261,7 +265,7 @@ def guess_word(
     return GuessResponse(
         label=word,
         similarity=similarity,
-        rank=1,
+        rank=game_rank,
         isAnswer=is_answer,
     )
 
