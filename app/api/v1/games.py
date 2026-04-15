@@ -1,4 +1,4 @@
-import uuid
+import uuid, json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -137,9 +137,16 @@ def join_game(
     db.commit()
     db.refresh(participant)
 
-    # Redis 리더보드에 초기값 등록
     r = get_redis()
-    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {nickname: 0.0}, nx=True) # nx=True로 기존 참가자 점수 덮어쓰기 방지
+    
+    # Redis 리더보드에 초기값 등록
+    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.id: 0.0}, nx=True) # nx=True로 기존 참가자 점수 덮어쓰기 방지
+
+    # Hash: 참가자 정보 저장
+    r.hset(f"game:{V1_GAME_ID}:participants", participant.id, json.dumps({
+        "nickname": nickname,
+        "sessionId": session_id,
+    }))
 
     request.session["session_id"] = session_id
     request.session["nickname"] = nickname
@@ -213,6 +220,8 @@ def guess_word(
     username = body.username.strip()
     if not word or not username:
         raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+    
+    # TODO: 없는 단어면 다른 상태코드와 에러메시지로 응답하자.
 
     parts = authorization.split()
     session_id = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
@@ -256,10 +265,10 @@ def guess_word(
     db.commit()
 
     r = get_redis()
-    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
+    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.id: participant.best_similarity})
     # r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word) # TODO: 최대 유사도 단어도 캐싱이 필요할 경우 주석 해제
 
-    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
+    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.id) # TODO: 랭킹 조회는 다른 API에서 하자.
     game_rank = (rank_idx or 0) + 1
 
     return GuessResponse(
@@ -270,10 +279,33 @@ def guess_word(
     )
 
 
+def _get_users_from_redis(game_id: int) -> list[UserInfo]:
+    """Redis leaderboard에서 참가자 목록을 랭킹 순으로 조회"""
+    r = get_redis()
+    entries = r.zrevrange(f"game:{game_id}:leaderboard", 0, -1, withscores=True)
+    if not entries:
+        return []
+
+    participant_ids = [pid for pid, _ in entries]
+    raws = r.hmget(f"game:{game_id}:participants", *participant_ids)
+
+    users = []
+    for rank, ((_, score), raw) in enumerate(zip(entries, raws), start=1):
+        if raw is None:
+            continue
+        info = json.loads(raw)
+        users.append(UserInfo(
+            name=info["nickname"],
+            bestSimilarity=round(score, 4),
+            rank=rank,
+        ))
+    return users
+
+
 # ═══════════════════════════════════════════════════════════════
-# 게임 정보 폴링  GET /api/v1/games/polling
+# 게임 정보 폴링  GET /api/v1/games/polling/db
 # ═══════════════════════════════════════════════════════════════
-@router.get("/polling", response_model=GameInfoResponse)
+@router.get("/polling/db", response_model=GameInfoResponse)
 def game_polling(db: Session = Depends(get_db)):
     game = get_game_or_404(V1_GAME_ID, db)
     sync_game_status(game, db)
@@ -293,6 +325,25 @@ def game_polling(db: Session = Depends(get_db)):
         )
         for i, p in enumerate(participants)
     ]
+
+    to_unix_ms = lambda dt: int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000) if dt else None
+
+    return GameInfoResponse(
+        startAt=to_unix_ms(game.started_at),
+        endAt=to_unix_ms(game.ended_at),
+        users=users,
+    )
+    
+    
+# ═══════════════════════════════════════════════════════════════
+# 게임 정보 폴링  GET /api/v1/games/polling
+# ═══════════════════════════════════════════════════════════════
+@router.get("/polling", response_model=GameInfoResponse)
+def game_polling(db: Session = Depends(get_db)):
+    game = get_game_or_404(V1_GAME_ID, db) # 게임 상태도 Redis에서 관리하자
+    sync_game_status(game, db)
+
+    users = _get_users_from_redis(V1_GAME_ID)
 
     to_unix_ms = lambda dt: int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000) if dt else None
 
