@@ -1,15 +1,11 @@
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 
-import redis
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app.config import get_settings
 from app.db.database import get_db
 from app.db.enums import GameStatus
 from app.db.models import Game, Participant
@@ -23,113 +19,23 @@ from app.schemas.game import (
     GuessResponse,
     JoinGameRequest,
     JoinGameResponse,
-    LeaderboardEntry,
     LeaderboardResponse,
     MessageResponse,
     ParticipantResult,
     UpdateEndtimeRequest,
     UpdateWordRequest,
 )
-from app.vectors import VectorDB
+from app.utils import (
+    get_game_or_404,
+    get_leaderboard,
+    get_redis,
+    get_session,
+    get_host_session,
+    get_vector_db,
+    sync_game_status,
+)
 
 router = APIRouter(prefix="/api/games", tags=["games"])
-
-settings = get_settings()
-
-# ─── VectorDB 지연 초기화 ─────────────────────────────────────
-_vector_db: Optional[VectorDB] = None
-
-
-def get_vector_db() -> VectorDB:
-    global _vector_db
-    if _vector_db is None:
-        try:
-            _vector_db = VectorDB(Path(settings.vector_db_path))
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=503,
-                detail="벡터 데이터베이스를 찾을 수 없습니다.",
-            )
-    return _vector_db
-
-
-# ─── Redis 클라이언트 ─────────────────────────────────────────
-def get_redis() -> redis.Redis:
-    try:
-        client = redis.from_url(settings.redis_url, decode_responses=True)
-        client.ping()
-        return client
-    except redis.exceptions.ConnectionError:
-        raise HTTPException(
-            status_code=503,
-            detail="Redis에 연결할 수 없습니다.",
-        )
-
-
-# ─── 세션 헬퍼 ───────────────────────────────────────────────
-def get_session(request: Request) -> dict:
-    """세션이 없으면 401"""
-    if not request.session.get("nickname"):
-        raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
-    return request.session
-
-
-def get_host_session(request: Request, game_id: int) -> dict:
-    """호스트 세션 검증"""
-    session = get_session(request)
-    if not session.get("is_host") or session.get("game_id") != game_id:
-        raise HTTPException(status_code=403, detail="호스트만 수행할 수 있습니다.")
-    return session
-
-
-# ─── 게임 상태 자동 전환 ──────────────────────────────────────
-def sync_game_status(game: Game, db: Session) -> str:
-    """
-    started_at / ended_at 기준으로 상태를 자동 전환하고 DB에 반영한다.
-    실제 상태 문자열을 반환한다.
-    """
-    if game.status == GameStatus.POSTGAME:
-        return GameStatus.POSTGAME
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    new_status = game.status
-
-    if game.ended_at and now >= game.ended_at:
-        new_status = GameStatus.POSTGAME
-    elif game.started_at and now >= game.started_at:
-        new_status = GameStatus.INGAME
-
-    if new_status != game.status:
-        game.status = new_status
-        db.commit()
-
-    return new_status
-
-
-# ─── Redis 리더보드 헬퍼 ──────────────────────────────────────
-def get_leaderboard(r: redis.Redis, game_id: int) -> list[LeaderboardEntry]:
-    members = r.zrevrangebyscore(
-        f"game:{game_id}:leaderboard", "+inf", "-inf", withscores=True
-    )
-    result = []
-    for i, (nickname, score) in enumerate(members):
-        closest = r.get(f"game:{game_id}:closest:{nickname}")
-        result.append(
-            LeaderboardEntry(
-                rank=i + 1,
-                nickname=nickname,
-                bestSimilarity=round(score, 4),
-                closestWord=closest,
-            )
-        )
-    return result
-
-
-def _get_game_or_404(game_id: int, db: Session) -> Game:
-    game = db.query(Game).filter(Game.id == game_id).first()
-    if not game:
-        raise HTTPException(status_code=404, detail="게임을 찾을 수 없습니다.")
-    return game
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -186,7 +92,7 @@ def join_game(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
     sync_game_status(game, db)
 
     if game.status == GameStatus.POSTGAME:
@@ -230,7 +136,7 @@ def join_game(
 # ═══════════════════════════════════════════════════════════════
 @router.get("/{game_id}/status", response_model=GameStatusResponse)
 def game_status(game_id: int, db: Session = Depends(get_db)):
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
     status = sync_game_status(game, db)
     count = db.query(Participant).filter(Participant.game_id == game_id).count()
     return GameStatusResponse(
@@ -251,7 +157,7 @@ def update_endtime(
     db: Session = Depends(get_db),
 ):
     get_host_session(request, game_id)
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
 
     if body.startedAt is not None:
         game.started_at = body.startedAt
@@ -273,7 +179,7 @@ def update_word(
     db: Session = Depends(get_db),
 ):
     get_host_session(request, game_id)
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
 
     if game.status != GameStatus.PREGAME:
         raise HTTPException(status_code=400, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
@@ -298,7 +204,7 @@ def guess_word(
 ):
     session = get_session(request)
 
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
     sync_game_status(game, db)
 
     if game.status != GameStatus.INGAME:
@@ -371,7 +277,7 @@ def guess_word(
 # ═══════════════════════════════════════════════════════════════
 @router.get("/{game_id}/polling", response_model=GamePollingResponse)
 def game_polling(game_id: int, db: Session = Depends(get_db)):
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
     status = sync_game_status(game, db)
     count = db.query(Participant).filter(Participant.game_id == game_id).count()
 
@@ -390,7 +296,7 @@ def game_polling(game_id: int, db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════
 @router.get("/{game_id}/leaderboard", response_model=LeaderboardResponse)
 def leaderboard(game_id: int, db: Session = Depends(get_db)):
-    _get_game_or_404(game_id, db)
+    get_game_or_404(game_id, db)
     r = get_redis()
     return LeaderboardResponse(leaderboard=get_leaderboard(r, game_id))
 
@@ -401,7 +307,7 @@ def leaderboard(game_id: int, db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════
 @router.get("/{game_id}/result", response_model=GameResultResponse)
 def game_result(game_id: int, db: Session = Depends(get_db)):
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
 
     participants = (
         db.query(Participant)
@@ -445,7 +351,7 @@ def end_game(
             content={"message": "호스트만 종료할 수 있습니다."},
         )
 
-    game = _get_game_or_404(game_id, db)
+    game = get_game_or_404(game_id, db)
     game.status = GameStatus.POSTGAME
     if not game.ended_at:
         game.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)

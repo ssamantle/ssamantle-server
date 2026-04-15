@@ -27,12 +27,12 @@ from app.schemas.game import (
     UpdateWordRequest,
     UserInfo,
 )
-from app.api.routes.games import (
+from app.utils import (
     get_vector_db,
     get_redis,
     get_session,
     sync_game_status,
-    _get_game_or_404,
+    get_game_or_404,
 )
 
 router = APIRouter(prefix="/api/v1/games", tags=["games-v1"])
@@ -113,7 +113,7 @@ def join_game(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
     sync_game_status(game, db)
 
     if game.status == GameStatus.POSTGAME:
@@ -156,7 +156,7 @@ def update_endtime(
     db: Session = Depends(get_db),
 ):
     get_host_session_v1(request)
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
 
     if body.startedAt is not None:
         game.started_at = body.startedAt
@@ -177,7 +177,7 @@ def update_word(
     db: Session = Depends(get_db),
 ):
     get_host_session_v1(request)
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
 
     if game.status != GameStatus.PREGAME:
         raise HTTPException(status_code=400, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
@@ -199,7 +199,7 @@ def guess_word(
     authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
     sync_game_status(game, db)
 
     if game.status != GameStatus.INGAME:
@@ -251,12 +251,12 @@ def guess_word(
     ))
     db.commit()
 
-    #r = get_redis()
-    #r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
-    #r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word)
+    r = get_redis()
+    r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.nickname: participant.best_similarity})
+    r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word)
 
-    #rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
-    #game_rank = (rank_idx or 0) + 1
+    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.nickname)
+    game_rank = (rank_idx or 0) + 1
 
     return GuessResponse(
         label=word,
@@ -271,7 +271,7 @@ def guess_word(
 # ═══════════════════════════════════════════════════════════════
 @router.get("/polling", response_model=GameInfoResponse)
 def game_polling(db: Session = Depends(get_db)):
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
     sync_game_status(game, db)
 
     participants = (
@@ -305,7 +305,7 @@ def game_polling(db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════════
 @router.get("/result", response_model=GameResultResponse)
 def game_result(db: Session = Depends(get_db)):
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
 
     participants = (
         db.query(Participant)
@@ -345,7 +345,7 @@ def end_game(
     if not session.get("is_host") or session.get("game_id") != V1_GAME_ID:
         return JSONResponse(status_code=403, content={"message": "호스트만 종료할 수 있습니다."})
 
-    game = _get_game_or_404(V1_GAME_ID, db)
+    game = get_game_or_404(V1_GAME_ID, db)
     game.status = GameStatus.POSTGAME
     if not game.ended_at:
         game.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
