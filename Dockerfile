@@ -25,6 +25,9 @@ RUN python scripts/process_vecs.py \
     --word-list data/filtered_words.txt \
     --db-path data/vectors.db
 
+# 원본 파일을 지워 용량 확보
+RUN rm cc.ko.300.vec.gz
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
