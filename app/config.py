@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     secrets_path: str = str(Path(__file__).parent.parent / "data" / "daily_secrets_2026.json")
 
     # 데이터베이스
-    database_url: str = "sqlite:///./semantle.db"
+    database_url: str = "sqlite:///./data/semantle.db"
 
     # Redis
     redis_url: str = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
