@@ -11,9 +11,12 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DATABASE_NAME=./data/semantle.db
     depends_on:
       - redis
     restart: unless-stopped
+    volumes:
+      - server_data:/app/data
   redis:
     image: redis:latest
     container_name: redis
@@ -24,3 +27,4 @@ services:
     command: [ "redis-server", "--appendonly", "yes" ]
 volumes:
   redis_data:
+  server_data:
