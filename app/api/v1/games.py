@@ -57,9 +57,9 @@ def create_game(
     db: Session = Depends(get_db),
 ):
     if not body.hostname.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 hostname 필드는 필수입니다.")
     if not body.targetWord.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
 
     session_id = str(uuid.uuid4())
 
@@ -120,11 +120,11 @@ def join_game(
     sync_game_status(game, db)
 
     if game.status == GameStatus.POSTGAME:
-        raise HTTPException(status_code=400, detail="이미 종료된 게임입니다.")
+        raise HTTPException(status_code=409, detail="이미 종료된 게임입니다.")
 
     nickname = body.nickname.strip()
     if not nickname:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 nickname 필드는 필수입니다.")
 
     dup = (
         db.query(Participant)
@@ -194,10 +194,10 @@ def update_word(
     game = get_game_or_404(V1_GAME_ID, db)
 
     if game.status != GameStatus.PREGAME:
-        raise HTTPException(status_code=400, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
+        raise HTTPException(status_code=409, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
 
     if not body.targetWord.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
 
     game.target_word = body.targetWord.strip()
     db.commit()
@@ -217,14 +217,12 @@ def guess_word(
     sync_game_status(game, db)
 
     if game.status != GameStatus.INGAME:
-        raise HTTPException(status_code=400, detail="게임이 진행 중이 아닙니다.")
+        raise HTTPException(status_code=409, detail="게임이 진행 중이 아닙니다.")
 
     word = body.word.strip()
     username = body.username.strip()
     if not word or not username:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
-    
-    # TODO: 없는 단어면 다른 상태코드와 에러메시지로 응답하자.
+        raise HTTPException(status_code=400, detail="요청 본문에 word와 username 필드는 필수입니다.")
 
     parts = authorization.split()
     session_id = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
@@ -240,11 +238,11 @@ def guess_word(
     vdb = get_vector_db()
     word_data = vdb.get_word_vector(word)
     if word_data is None:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=404, detail="사전에 없는 단어입니다.")
 
     target_data = vdb.get_word_vector(game.target_word)
     if target_data is None:
-        raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다.")
+        raise HTTPException(status_code=500, detail="정답 단어가 사전에 없는 오류가 발생했습니다.")
 
     w_vec, w_norm = word_data
     t_vec, t_norm = target_data
