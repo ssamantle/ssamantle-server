@@ -11,7 +11,7 @@ volumes:
 services:
   redis:
     image: redis:7.0
-    container_name: redis
+    container_name: redis-2
     restart: unless-stopped
     ports:
       - '6380:6379'
