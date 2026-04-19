@@ -1,3 +1,4 @@
+import logging
 import uuid, json
 from datetime import datetime, timezone
 
@@ -35,6 +36,8 @@ from app.utils import (
     get_game_or_404,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/games", tags=["games-v1"])
 
 V1_GAME_ID = 1
@@ -57,9 +60,14 @@ def create_game(
     db: Session = Depends(get_db),
 ):
     if not body.hostname.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 hostname 필드는 필수입니다.")
     if not body.targetWord.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
+
+    vdb = get_vector_db()
+    if not vdb.word_exists(body.targetWord.strip()):
+        logger.warning("게임 생성 실패 - 사전에 없는 단어: '%s' (host=%s)", body.targetWord.strip(), body.hostname.strip())
+        raise HTTPException(status_code=404, detail=f"'{body.targetWord.strip()}'은(는) 사전에 없는 단어입니다.")
 
     session_id = str(uuid.uuid4())
 
@@ -72,6 +80,7 @@ def create_game(
     # 기존 게임이 있으면 덮어쓰기, 없으면 생성
     game = db.query(Game).filter(Game.id == V1_GAME_ID).first()
     if game:
+        logger.info("게임 재생성 (덮어쓰기) - host=%s, targetWord=%s, status=%s", body.hostname.strip(), body.targetWord.strip(), initial_status)
         game.hostname = body.hostname.strip()
         game.host_session_id = session_id
         game.target_word = body.targetWord.strip()
@@ -85,6 +94,7 @@ def create_game(
         r.delete(f"game:{V1_GAME_ID}:leaderboard")
         r.delete(f"game:{V1_GAME_ID}:participants")
     else:
+        logger.info("게임 생성 - host=%s, targetWord=%s, status=%s", body.hostname.strip(), body.targetWord.strip(), initial_status)
         game = Game(
             id=V1_GAME_ID,
             hostname=body.hostname.strip(),
@@ -120,11 +130,12 @@ def join_game(
     sync_game_status(game, db)
 
     if game.status == GameStatus.POSTGAME:
-        raise HTTPException(status_code=400, detail="이미 종료된 게임입니다.")
+        logger.warning("게임 참가 실패 - 이미 종료된 게임 (nickname=%s)", body.nickname.strip())
+        raise HTTPException(status_code=409, detail="이미 종료된 게임입니다.")
 
     nickname = body.nickname.strip()
     if not nickname:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 nickname 필드는 필수입니다.")
 
     dup = (
         db.query(Participant)
@@ -132,6 +143,7 @@ def join_game(
         .first()
     )
     if dup:
+        logger.warning("게임 참가 실패 - 닉네임 중복: '%s'", nickname)
         raise HTTPException(status_code=409, detail="이미 사용 중인 닉네임입니다.")
 
     session_id = str(uuid.uuid4())
@@ -141,7 +153,7 @@ def join_game(
     db.refresh(participant)
 
     r = get_redis()
-    
+
     # Redis 리더보드에 초기값 등록
     r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.id: 0.0}, nx=True) # nx=True로 기존 참가자 점수 덮어쓰기 방지
 
@@ -157,6 +169,7 @@ def join_game(
     request.session["is_host"] = False
     request.session["participant_id"] = participant.id
 
+    logger.info("게임 참가 - nickname=%s, participantId=%s", nickname, participant.id)
     return JoinGameResponse(gameId=V1_GAME_ID, nickname=nickname, sessionId=session_id)
 
 
@@ -178,6 +191,7 @@ def update_endtime(
         game.ended_at = body.endedAt
 
     db.commit()
+    logger.info("게임 시간 수정 - startedAt=%s, endedAt=%s", game.started_at, game.ended_at)
     return MessageResponse(message="시간이 수정되었습니다.")
 
 
@@ -194,11 +208,18 @@ def update_word(
     game = get_game_or_404(V1_GAME_ID, db)
 
     if game.status != GameStatus.PREGAME:
-        raise HTTPException(status_code=400, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
+        logger.warning("단어 수정 실패 - 게임이 이미 시작됨 (status=%s)", game.status)
+        raise HTTPException(status_code=409, detail="게임 시작 전에만 단어를 수정할 수 있습니다.")
 
     if not body.targetWord.strip():
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
 
+    vdb = get_vector_db()
+    if not vdb.word_exists(body.targetWord.strip()):
+        logger.warning("단어 수정 실패 - 사전에 없는 단어: '%s'", body.targetWord.strip())
+        raise HTTPException(status_code=404, detail=f"'{body.targetWord.strip()}'은(는) 사전에 없는 단어입니다.")
+
+    logger.info("정답 단어 수정 - '%s' -> '%s'", game.target_word, body.targetWord.strip())
     game.target_word = body.targetWord.strip()
     db.commit()
     return MessageResponse(message="단어가 수정되었습니다.")
@@ -217,14 +238,12 @@ def guess_word(
     sync_game_status(game, db)
 
     if game.status != GameStatus.INGAME:
-        raise HTTPException(status_code=400, detail="게임이 진행 중이 아닙니다.")
+        raise HTTPException(status_code=409, detail="게임이 진행 중이 아닙니다.")
 
     word = body.word.strip()
     username = body.username.strip()
     if not word or not username:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
-    
-    # TODO: 없는 단어면 다른 상태코드와 에러메시지로 응답하자.
+        raise HTTPException(status_code=400, detail="요청 본문에 word와 username 필드는 필수입니다.")
 
     parts = authorization.split()
     session_id = parts[1] if len(parts) == 2 and parts[0].lower() == "bearer" else authorization
@@ -235,16 +254,19 @@ def guess_word(
         .first()
     )
     if not participant or participant.session_id != session_id:
+        logger.warning("추측 인증 실패 - username=%s", username)
         raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
 
     vdb = get_vector_db()
     word_data = vdb.get_word_vector(word)
     if word_data is None:
-        raise HTTPException(status_code=400, detail="잘못된 요청입니다.")
+        logger.info("추측 실패 - 사전에 없는 단어: '%s' (username=%s)", word, username)
+        raise HTTPException(status_code=404, detail="사전에 없는 단어입니다.")
 
     target_data = vdb.get_word_vector(game.target_word)
     if target_data is None:
-        raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다.")
+        logger.error("정답 단어가 벡터 DB에 없음: '%s'", game.target_word)
+        raise HTTPException(status_code=500, detail="정답 단어가 사전에 없는 오류가 발생했습니다.")
 
     w_vec, w_norm = word_data
     t_vec, t_norm = target_data
@@ -258,6 +280,7 @@ def guess_word(
         participant.closest_word = word
     if is_answer:
         participant.is_correct = True
+        logger.info("정답 맞힘 - username=%s, word=%s", username, word)
 
     db.add(GuessHistory(
         participant_id=participant.id,
@@ -274,6 +297,7 @@ def guess_word(
     rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.id) # TODO: 랭킹 조회는 다른 API에서 하자.
     game_rank = (rank_idx or 0) + 1
 
+    logger.debug("추측 결과 - username=%s, word=%s, similarity=%s, rank=%d", username, word, similarity, game_rank)
     return GuessResponse(
         label=word,
         similarity=similarity,
@@ -336,8 +360,8 @@ def game_polling(db: Session = Depends(get_db)):
         endAt=to_unix_ms(game.ended_at),
         users=users,
     )
-    
-    
+
+
 # ═══════════════════════════════════════════════════════════════
 # 게임 정보 폴링  GET /api/v1/games/polling
 # ═══════════════════════════════════════════════════════════════
@@ -409,6 +433,7 @@ def end_game(
         game.ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
 
+    logger.info("게임 강제 종료 - gameId=%d", V1_GAME_ID)
     return MessageResponse(message="게임이 종료되었습니다.")
 
 
@@ -430,6 +455,7 @@ def get_guess_history(
         .first()
     )
     if not participant or participant.session_id != session_id:
+        logger.warning("추측 기록 조회 인증 실패 - username=%s", username)
         raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
 
     r = get_redis()
