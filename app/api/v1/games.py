@@ -61,6 +61,10 @@ def create_game(
     if not body.targetWord.strip():
         raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
 
+    vdb = get_vector_db()
+    if not vdb.word_exists(body.targetWord.strip()):
+        raise HTTPException(status_code=404, detail=f"'{body.targetWord.strip()}'은(는) 사전에 없는 단어입니다.")
+
     session_id = str(uuid.uuid4())
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -198,6 +202,10 @@ def update_word(
 
     if not body.targetWord.strip():
         raise HTTPException(status_code=400, detail="요청 본문에 targetWord 필드는 필수입니다.")
+
+    vdb = get_vector_db()
+    if not vdb.word_exists(body.targetWord.strip()):
+        raise HTTPException(status_code=404, detail=f"'{body.targetWord.strip()}'은(는) 사전에 없는 단어입니다.")
 
     game.target_word = body.targetWord.strip()
     db.commit()
