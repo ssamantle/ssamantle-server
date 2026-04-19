@@ -81,6 +81,9 @@ def create_game(
         game.created_at = datetime.now(timezone.utc).replace(tzinfo=None) # TODO: TIMEZONE을 한국시간으로 변경
         for participant in db.query(Participant).filter(Participant.game_id == V1_GAME_ID).all():
             db.delete(participant)
+        r = get_redis()
+        r.delete(f"game:{V1_GAME_ID}:leaderboard")
+        r.delete(f"game:{V1_GAME_ID}:participants")
     else:
         game = Game(
             id=V1_GAME_ID,
