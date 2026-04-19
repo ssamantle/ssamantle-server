@@ -38,9 +38,12 @@ def vector_to_blob(vec: np.ndarray) -> bytes:
 def create_database(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS vectors (word TEXT PRIMARY KEY, vec BLOB, norm REAL)"
+        "CREATE TABLE IF NOT EXISTS vectors (word TEXT PRIMARY KEY, vec BLOB, norm REAL, sim REAL DEFAULT 0.0)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_word ON vectors(word)")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(vectors)")}
+    if "sim" not in columns:
+        conn.execute("ALTER TABLE vectors ADD COLUMN sim REAL DEFAULT 0.0")
     return conn
 
 
@@ -55,8 +58,8 @@ def store_vectors(db_path: Path, vec_path: Path, word_list_path: Path) -> None:
             continue
         blob = vector_to_blob(vec)
         cursor.execute(
-            "INSERT OR REPLACE INTO vectors (word, vec, norm) VALUES (?, ?, ?)",
-            (word, blob, norm),
+            "INSERT OR REPLACE INTO vectors (word, vec, norm, sim) VALUES (?, ?, ?, ?)",
+            (word, blob, norm, 0.0),
         )
 
     conn.commit()
