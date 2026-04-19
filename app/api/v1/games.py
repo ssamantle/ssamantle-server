@@ -50,6 +50,14 @@ def get_host_session_v1(request: Request) -> dict:
     return session
 
 
+def refresh_vector_similarities(target_word: str) -> int:
+    try:
+        vdb = get_vector_db()
+        return vdb.update_similarities(target_word)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="정답 단어가 벡터 DB에 없습니다.")
+
+
 # ═══════════════════════════════════════════════════════════════
 # 게임 생성 (Host)  POST /api/v1/games
 # ═══════════════════════════════════════════════════════════════
@@ -108,6 +116,8 @@ def create_game(
 
     db.commit()
     db.refresh(game)
+
+    refresh_vector_similarities(game.target_word)
 
     request.session["session_id"] = session_id # TODO: sessionId는 쿠키로 전송하자.
     request.session["nickname"] = body.hostname.strip()
@@ -222,6 +232,7 @@ def update_word(
     logger.info("정답 단어 수정 - '%s' -> '%s'", game.target_word, body.targetWord.strip())
     game.target_word = body.targetWord.strip()
     db.commit()
+    refresh_vector_similarities(game.target_word)
     return MessageResponse(message="단어가 수정되었습니다.")
 
 
