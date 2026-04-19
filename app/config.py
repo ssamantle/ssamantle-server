@@ -1,6 +1,11 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from pathlib import Path
+import os
+
+
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = os.environ.get('REDIS_PORT', 6380)
 
 
 class Settings(BaseSettings):
@@ -24,10 +29,10 @@ class Settings(BaseSettings):
     secrets_path: str = str(Path(__file__).parent.parent / "data" / "daily_secrets_2026.json")
 
     # 데이터베이스
-    database_url: str = "sqlite:///./semantle.db"
+    database_url: str = "sqlite:///./data/semantle.db"
 
     # Redis
-    redis_url: str = "redis://localhost:6380/0"
+    redis_url: str = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
 
     # 세션
     secret_key: str = "dev-secret-key-change-in-production"
