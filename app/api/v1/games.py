@@ -55,7 +55,7 @@ def refresh_vector_similarities(target_word: str) -> int:
         vdb = get_vector_db()
         return vdb.update_similarities(target_word)
     except ValueError:
-        raise HTTPException(status_code=400, detail="정답 단어가 벡터 DB에 없습니다.")
+        raise HTTPException(status_code=404, detail="정답 단어가 벡터 DB에 없습니다.")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -284,6 +284,9 @@ def guess_word(
     raw_sim = vdb.cosine_similarity(w_vec, w_norm, t_vec, t_norm)
     similarity = round(max(0.0, raw_sim), 4)
 
+    # 정답 유사도 기준 단어 순위 조회 (1~1000, 1001=순위권 밖)
+    word_rank = vdb.get_word_rank(word)
+
     is_answer = word == game.target_word
 
     if similarity > participant.best_similarity:
@@ -297,22 +300,26 @@ def guess_word(
         participant_id=participant.id,
         word=word,
         similarity=similarity,
+        word_rank=word_rank,
         is_answer=is_answer,
     ))
     db.commit()
 
     r = get_redis()
     r.zadd(f"game:{V1_GAME_ID}:leaderboard", {participant.id: participant.best_similarity})
-    # r.set(f"game:{V1_GAME_ID}:closest:{participant.nickname}", participant.closest_word or word) # TODO: 최대 유사도 단어도 캐싱이 필요할 경우 주석 해제
 
-    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.id) # TODO: 랭킹 조회는 다른 API에서 하자.
+    rank_idx = r.zrevrank(f"game:{V1_GAME_ID}:leaderboard", participant.id)
     game_rank = (rank_idx or 0) + 1
 
-    logger.debug("추측 결과 - username=%s, word=%s, similarity=%s, rank=%d", username, word, similarity, game_rank)
+    logger.debug(
+        "추측 결과 - username=%s, word=%s, similarity=%s, wordRank=%d, gameRank=%d",
+        username, word, similarity, word_rank, game_rank,
+    )
     return GuessResponse(
         label=word,
         similarity=similarity,
         rank=game_rank,
+        wordRank=word_rank,
         isAnswer=is_answer,
     )
 
@@ -482,6 +489,7 @@ def get_guess_history(
             label=g.word,
             similarity=g.similarity,
             rank=rank,
+            wordRank=g.word_rank,
             isAnswer=g.is_answer,
         ))
 

@@ -54,7 +54,8 @@ class GuessRequest(BaseModel):
 class GuessResponse(BaseModel):
     label: str
     similarity: float
-    rank: int
+    rank: int        # 참가자 리더보드 순위
+    wordRank: int    # 정답 유사도 기준 단어 순위 (1~1000, 1001=순위권 밖)
     isAnswer: bool
 
 
@@ -100,7 +101,8 @@ class GuessHistoryRequest(BaseModel):
 class GuessHistoryItem(BaseModel):
     label: str
     similarity: float
-    rank: int
+    rank: int        # 참가자 리더보드 순위 (-1 = 해당 없음)
+    wordRank: int    # 정답 유사도 기준 단어 순위 (1~1000, 1001=순위권 밖)
     isAnswer: bool
 
 
