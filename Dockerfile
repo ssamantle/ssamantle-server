@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir -r scripts/requirements.txt
 # filter_words.py 실행 (원본 FastText-test 레포에서 복사)
 RUN python scripts/filter_words.py \
     --vec-path cc.ko.300.vec.gz \
-    --output data/filtered_words.txt
+    --output data/filtered_words.txt \
+    --use-kiwi
 
 # process_vecs.py 실행 (원본 FastText-test 레포에서 복사)
 RUN python scripts/process_vecs.py \
