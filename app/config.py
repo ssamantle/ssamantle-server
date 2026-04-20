@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # 기본 설정
     app_name: str = "Semantle Server"
-    app_version: str = "0.0.2"
+    app_version: str = "0.0.3"
 
     # 서버 설정
     host: str = "0.0.0.0"
