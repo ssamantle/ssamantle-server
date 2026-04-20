@@ -8,7 +8,7 @@ from starlette.requests import Request
 
 from app.db.database import get_db
 from app.db.enums import GameStatus
-from app.db.models import Game, Participant
+from app.db.models import Game, GuessHistory, Participant
 from app.schemas.game import (
     CreateGameRequest,
     CreateGameResponse,
@@ -250,6 +250,13 @@ def guess_word(
         participant.closest_word = word
     if is_correct:
         participant.is_correct = True
+
+    db.add(GuessHistory(
+        participant_id=participant.id,
+        word=word,
+        similarity=similarity,
+        is_answer=is_correct,
+    ))
     db.commit()
 
     # TODO: Redis 연동 후 주석 제거
@@ -282,7 +289,7 @@ def game_polling(game_id: int, db: Session = Depends(get_db)):
     count = db.query(Participant).filter(Participant.game_id == game_id).count()
 
     r = get_redis()
-    leaderboard = get_leaderboard(r, game_id)
+    leaderboard = get_leaderboard(r, game_id, db)
 
     return GamePollingResponse(
         gameStatus=status,
