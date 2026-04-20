@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.config import get_settings
 from app.db.enums import GameStatus
-from app.db.models import Game
-from app.schemas.game import LeaderboardEntry
+from app.db.models import Game, GuessHistory, Participant
+from app.schemas.game import LeaderboardEntry, SubmissionDetail
 from app.vectors import VectorDB
 
 settings = get_settings()
@@ -59,6 +59,54 @@ def get_host_session(request: Request, game_id: int) -> dict:
     return session
 
 
+def build_submission_detail(
+    label: Optional[str],
+    similarity: Optional[float],
+    submitted_at: Optional[datetime] = None,
+) -> Optional[SubmissionDetail]:
+    if label is None or similarity is None:
+        return None
+    return SubmissionDetail(
+        label=label,
+        similarity=round(similarity, 4),
+        submittedAt=submitted_at,
+    )
+
+
+def get_latest_guess(participant: Participant) -> Optional[GuessHistory]:
+    if not participant.guesses:
+        return None
+    return max(
+        participant.guesses,
+        key=lambda guess: (guess.submitted_at, guess.id),
+    )
+
+
+def get_best_guess(participant: Participant) -> Optional[GuessHistory]:
+    if not participant.guesses:
+        return None
+
+    best_score = round(participant.best_similarity, 4)
+    matching_guesses = [
+        guess for guess in participant.guesses
+        if round(guess.similarity, 4) == best_score
+    ]
+    if not matching_guesses:
+        return None
+    if participant.closest_word:
+        exact_matches = [
+            guess for guess in matching_guesses
+            if guess.word == participant.closest_word
+        ]
+        if exact_matches:
+            matching_guesses = exact_matches
+
+    return max(
+        matching_guesses,
+        key=lambda guess: (guess.submitted_at, guess.id),
+    )
+
+
 # ─── 게임 상태 자동 전환 ──────────────────────────────────────
 def sync_game_status(game: Game, db: Session) -> str:
     if game.status == GameStatus.POSTGAME:
@@ -79,20 +127,63 @@ def sync_game_status(game: Game, db: Session) -> str:
     return new_status
 
 
-# ─── Redis 리더보드 헬퍼 ──────────────────────────────────────
-def get_leaderboard(r: redis.Redis, game_id: int) -> list[LeaderboardEntry]:
+def get_leaderboard(r: redis.Redis, game_id: int, db: Session | None = None) -> list[LeaderboardEntry]:
     members = r.zrevrangebyscore(
         f"game:{game_id}:leaderboard", "+inf", "-inf", withscores=True
     )
     result = []
+
+    participants_by_nickname: dict[str, Participant] = {}
+    if db is not None and members:
+        nicknames = [nickname for nickname, _ in members]
+        participants = (
+            db.query(Participant)
+            .options(selectinload(Participant.guesses))
+            .filter(
+                Participant.game_id == game_id,
+                Participant.nickname.in_(nicknames),
+            )
+            .all()
+        )
+        participants_by_nickname = {participant.nickname: participant for participant in participants}
+
     for i, (nickname, score) in enumerate(members):
         closest = r.get(f"game:{game_id}:closest:{nickname}")
+        participant = participants_by_nickname.get(nickname)
+
+        best_submission = None
+        latest_submission = None
+        if participant is not None:
+            best_guess = get_best_guess(participant)
+            latest_guess = get_latest_guess(participant)
+
+            if best_guess is not None:
+                best_submission = build_submission_detail(
+                    best_guess.word,
+                    best_guess.similarity,
+                    best_guess.submitted_at,
+                )
+            elif participant.closest_word is not None:
+                best_submission = build_submission_detail(
+                    participant.closest_word,
+                    participant.best_similarity,
+                )
+
+            if latest_guess is not None:
+                latest_submission = build_submission_detail(
+                    latest_guess.word,
+                    latest_guess.similarity,
+                    latest_guess.submitted_at,
+                )
+
         result.append(
             LeaderboardEntry(
                 rank=i + 1,
                 nickname=nickname,
                 bestSimilarity=round(score, 4),
                 closestWord=closest,
+                bestSubmission=best_submission,
+                latestSubmission=latest_submission,
             )
         )
     return result

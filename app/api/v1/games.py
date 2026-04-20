@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.db.database import get_db
@@ -29,6 +29,9 @@ from app.schemas.game import (
     UserInfo,
 )
 from app.utils import (
+    build_submission_detail,
+    get_best_guess,
+    get_latest_guess,
     get_vector_db,
     get_redis,
     get_session,
@@ -324,25 +327,58 @@ def guess_word(
     )
 
 
-def _get_users_from_redis(game_id: int) -> list[UserInfo]:
+def _get_users_from_redis(game_id: int, db: Session) -> list[UserInfo]:
     """Redis leaderboard에서 참가자 목록을 랭킹 순으로 조회"""
     r = get_redis()
     entries = r.zrevrange(f"game:{game_id}:leaderboard", 0, -1, withscores=True)
     if not entries:
         return []
 
-    participant_ids = [pid for pid, _ in entries]
-    raws = r.hmget(f"game:{game_id}:participants", *participant_ids)
+    participant_ids = [int(pid) for pid, _ in entries]
+    participants = (
+        db.query(Participant)
+        .options(selectinload(Participant.guesses))
+        .filter(Participant.game_id == V1_GAME_ID, Participant.id.in_(participant_ids))
+        .all()
+    )
+    participants_by_id = {participant.id: participant for participant in participants}
 
     users = []
-    for rank, ((_, score), raw) in enumerate(zip(entries, raws), start=1):
-        if raw is None:
+    for rank, (participant_id, score) in enumerate(entries, start=1):
+        participant = participants_by_id.get(int(participant_id))
+        if participant is None:
             continue
-        info = json.loads(raw)
+
+        best_guess = get_best_guess(participant)
+        latest_guess = get_latest_guess(participant)
+
+        best_submission = None
+        if best_guess is not None:
+            best_submission = build_submission_detail(
+                best_guess.word,
+                best_guess.similarity,
+                best_guess.submitted_at,
+            )
+        elif participant.closest_word is not None:
+            best_submission = build_submission_detail(
+                participant.closest_word,
+                participant.best_similarity,
+            )
+
+        latest_submission = None
+        if latest_guess is not None:
+            latest_submission = build_submission_detail(
+                latest_guess.word,
+                latest_guess.similarity,
+                latest_guess.submitted_at,
+            )
+
         users.append(UserInfo(
-            name=info["nickname"],
+            name=participant.nickname,
             bestSimilarity=round(score, 4),
             rank=rank,
+            bestSubmission=best_submission,
+            latestSubmission=latest_submission,
         ))
     return users
 
@@ -357,19 +393,45 @@ def game_polling(db: Session = Depends(get_db)):
 
     participants = (
         db.query(Participant)
+        .options(selectinload(Participant.guesses))
         .filter(Participant.game_id == V1_GAME_ID)
         .order_by(Participant.best_similarity.desc())
         .all()
     )
 
-    users = [
-        UserInfo(
-            name=p.nickname,
-            bestSimilarity=round(p.best_similarity, 4),
+    users = []
+    for i, participant in enumerate(participants):
+        best_guess = get_best_guess(participant)
+        latest_guess = get_latest_guess(participant)
+
+        best_submission = None
+        if best_guess is not None:
+            best_submission = build_submission_detail(
+                best_guess.word,
+                best_guess.similarity,
+                best_guess.submitted_at,
+            )
+        elif participant.closest_word is not None:
+            best_submission = build_submission_detail(
+                participant.closest_word,
+                participant.best_similarity,
+            )
+
+        latest_submission = None
+        if latest_guess is not None:
+            latest_submission = build_submission_detail(
+                latest_guess.word,
+                latest_guess.similarity,
+                latest_guess.submitted_at,
+            )
+
+        users.append(UserInfo(
+            name=participant.nickname,
+            bestSimilarity=round(participant.best_similarity, 4),
             rank=i + 1,
-        )
-        for i, p in enumerate(participants)
-    ]
+            bestSubmission=best_submission,
+            latestSubmission=latest_submission,
+        ))
 
     to_unix_ms = lambda dt: int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000) if dt else None
 
@@ -388,7 +450,7 @@ def game_polling(db: Session = Depends(get_db)):
     game = get_game_or_404(V1_GAME_ID, db) # 게임 상태도 Redis에서 관리하자
     sync_game_status(game, db)
 
-    users = _get_users_from_redis(V1_GAME_ID)
+    users = _get_users_from_redis(V1_GAME_ID, db)
 
     to_unix_ms = lambda dt: int(dt.replace(tzinfo=timezone.utc).timestamp() * 1000) if dt else None
 
