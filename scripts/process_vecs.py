@@ -37,8 +37,9 @@ def vector_to_blob(vec: np.ndarray) -> bytes:
 
 def create_database(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
+    # rank는 게임 생성 시 update_similarities()가 채우므로 기본값 1001로 초기화
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS vectors (word TEXT PRIMARY KEY, vec BLOB, norm REAL, sim REAL DEFAULT 0.0)"
+        "CREATE TABLE IF NOT EXISTS vectors (word TEXT PRIMARY KEY, vec BLOB, norm REAL, sim REAL DEFAULT 0.0, rank INTEGER DEFAULT 1001)"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_word ON vectors(word)")
     columns = {row[1] for row in conn.execute("PRAGMA table_info(vectors)")}
