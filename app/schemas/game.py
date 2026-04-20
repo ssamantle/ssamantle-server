@@ -59,11 +59,19 @@ class GuessResponse(BaseModel):
 
 
 # ─── 리더보드 ────────────────────────────────────────────────
+class SubmissionDetail(BaseModel):
+    label: str
+    similarity: float
+    submittedAt: Optional[datetime] = None
+
+
 class LeaderboardEntry(BaseModel):
     rank: int
     nickname: str
     bestSimilarity: float
     closestWord: Optional[str]
+    bestSubmission: Optional[SubmissionDetail] = None
+    latestSubmission: Optional[SubmissionDetail] = None
 
 
 class GamePollingResponse(BaseModel):
@@ -109,6 +117,8 @@ class UserInfo(BaseModel):
     name: str
     bestSimilarity: float
     rank: int
+    bestSubmission: Optional[SubmissionDetail] = None
+    latestSubmission: Optional[SubmissionDetail] = None
 
 
 class GameInfoResponse(BaseModel):
