@@ -143,6 +143,12 @@ curl -X POST http://localhost:8000/api/similarity/guess \
   -d '{"word": "사랑", "date": "2026-04-08"}'
 ```
 
+### 폴링 응답 참고
+
+- 게임 폴링 응답의 참가자 정보에 `bestSubmission`과 `latestSubmission`이 추가되었습니다.
+- 기존 `bestSimilarity`, `rank`, `closestWord` 필드는 그대로 유지되어 하위 호환됩니다.
+- `bestSubmission`은 각 참가자의 최고 제출, `latestSubmission`은 가장 최근 제출을 의미합니다.
+
 ## 🔧 환경 변수 설정
 
 `.env` 파일에서 다음을 설정할 수 있습니다:
