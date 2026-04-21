@@ -8,10 +8,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# 유사도 순위 상위 N위까지만 순위를 부여하고 나머지는 RANK_UNRANKED로 설정
-RANK_LIMIT = 1000
-RANK_UNRANKED = RANK_LIMIT + 1
-
 VECTOR_DIMENSION = 300
 
 
@@ -44,7 +40,7 @@ class VectorDB:
             if "sim" not in columns:
                 conn.execute("ALTER TABLE vectors ADD COLUMN sim REAL DEFAULT 0.0")
             if "rank" not in columns:
-                conn.execute(f"ALTER TABLE vectors ADD COLUMN rank INTEGER DEFAULT {RANK_UNRANKED}")
+                conn.execute("ALTER TABLE vectors ADD COLUMN rank INTEGER DEFAULT 0")
             conn.commit()
 
     def _iter_vectors(self, conn: sqlite3.Connection, batch_size: int) -> Iterator[list[tuple[str, bytes, float]]]:
@@ -104,7 +100,7 @@ class VectorDB:
             return False
 
     def update_similarities(self, target_word: str, batch_size: int = 1000) -> int:
-        """정답 단어 기준으로 모든 단어의 sim을 갱신하고 상위 RANK_LIMIT위까지 rank를 부여한다.
+        """정답 단어 기준으로 모든 단어의 sim과 rank를 갱신한다.
         게임 생성 또는 정답 단어 변경 시 1회 호출된다."""
         target_vector = self.get_word_vector(target_word)
         if target_vector is None:
@@ -130,13 +126,11 @@ class VectorDB:
                 )
                 updated_rows += len(updates)
 
-            # 2단계: 전체 rank를 RANK_UNRANKED로 초기화한 뒤 상위 RANK_LIMIT개에만 순위 부여
-            update_cursor.execute(f"UPDATE vectors SET rank = {RANK_UNRANKED}")
-            top_words = update_cursor.execute(
-                "SELECT word FROM vectors ORDER BY sim DESC LIMIT ?",
-                (RANK_LIMIT,),
+            # 2단계: 전체 단어에 유사도 내림차순으로 순위 부여
+            all_words = update_cursor.execute(
+                "SELECT word FROM vectors ORDER BY sim DESC"
             ).fetchall()
-            rank_updates = [(i + 1, word) for i, (word,) in enumerate(top_words)]
+            rank_updates = [(i + 1, word) for i, (word,) in enumerate(all_words)]
             update_cursor.executemany(
                 "UPDATE vectors SET rank = ? WHERE word = ?",
                 rank_updates,
@@ -151,13 +145,27 @@ class VectorDB:
         return updated_rows
 
     def get_word_rank(self, word: str) -> int:
-        """단어의 정답 유사도 순위를 반환한다. RANK_LIMIT위 밖이면 RANK_UNRANKED를 반환한다."""
+        """단어의 정답 유사도 순위를 반환한다. 단어가 없으면 0을 반환한다."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 row = conn.execute(
                     "SELECT rank FROM vectors WHERE word = ?", (word,)
                 ).fetchone()
-                return int(row[0]) if row else RANK_UNRANKED
+                return int(row[0]) if row else 0
         except sqlite3.Error as e:
             logger.error("rank 조회 실패 — word=%s, error=%s", word, e)
-            return RANK_UNRANKED
+            return 0
+
+    def get_word_similarity_and_rank(self, word: str) -> Optional[Tuple[float, int]]:
+        """사전 계산된 유사도와 순위를 반환한다. 단어가 없으면 None을 반환한다."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    "SELECT sim, rank FROM vectors WHERE word = ?", (word,)
+                ).fetchone()
+                if row is None:
+                    return None
+                return float(row[0]), int(row[1])
+        except sqlite3.Error as e:
+            logger.error("유사도·순위 조회 실패 — word=%s, error=%s", word, e)
+            return None

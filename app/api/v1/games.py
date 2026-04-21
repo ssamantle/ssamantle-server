@@ -17,6 +17,7 @@ from app.schemas.game import (
     GameResultResponse,
     GameStatusResponse,
     GuessHistoryItem,
+    SubmissionSummary,
     GuessRequest,
     GuessResponse,
     JoinGameRequest,
@@ -272,23 +273,13 @@ def guess_word(
         raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
 
     vdb = get_vector_db()
-    word_data = vdb.get_word_vector(word)
-    if word_data is None:
+    result = vdb.get_word_similarity_and_rank(word)
+    if result is None:
         logger.info("추측 실패 - 사전에 없는 단어: '%s' (username=%s)", word, username)
         raise HTTPException(status_code=404, detail="사전에 없는 단어입니다.")
 
-    target_data = vdb.get_word_vector(game.target_word)
-    if target_data is None:
-        logger.error("정답 단어가 벡터 DB에 없음: '%s'", game.target_word)
-        raise HTTPException(status_code=500, detail="정답 단어가 사전에 없는 오류가 발생했습니다.")
-
-    w_vec, w_norm = word_data
-    t_vec, t_norm = target_data
-    raw_sim = vdb.cosine_similarity(w_vec, w_norm, t_vec, t_norm)
+    raw_sim, word_rank = result
     similarity = round(max(0.0, raw_sim), 4)
-
-    # 정답 유사도 기준 단어 순위 조회 (1~1000, 1001=순위권 밖)
-    word_rank = vdb.get_word_rank(word)
 
     is_answer = word == game.target_word
 
@@ -354,23 +345,16 @@ def _get_users_from_redis(game_id: int, db: Session) -> list[UserInfo]:
 
         best_submission = None
         if best_guess is not None:
-            best_submission = build_submission_detail(
-                best_guess.word,
-                best_guess.similarity,
-                best_guess.submitted_at,
-            )
-        elif participant.closest_word is not None:
-            best_submission = build_submission_detail(
-                participant.closest_word,
-                participant.best_similarity,
+            best_submission = SubmissionSummary(
+                similarity=round(best_guess.similarity, 4),
+                wordRank=best_guess.word_rank,
             )
 
         latest_submission = None
         if latest_guess is not None:
-            latest_submission = build_submission_detail(
-                latest_guess.word,
-                latest_guess.similarity,
-                latest_guess.submitted_at,
+            latest_submission = SubmissionSummary(
+                similarity=round(latest_guess.similarity, 4),
+                wordRank=latest_guess.word_rank,
             )
 
         users.append(UserInfo(
@@ -406,23 +390,16 @@ def game_polling(db: Session = Depends(get_db)):
 
         best_submission = None
         if best_guess is not None:
-            best_submission = build_submission_detail(
-                best_guess.word,
-                best_guess.similarity,
-                best_guess.submitted_at,
-            )
-        elif participant.closest_word is not None:
-            best_submission = build_submission_detail(
-                participant.closest_word,
-                participant.best_similarity,
+            best_submission = SubmissionSummary(
+                similarity=round(best_guess.similarity, 4),
+                wordRank=best_guess.word_rank,
             )
 
         latest_submission = None
         if latest_guess is not None:
-            latest_submission = build_submission_detail(
-                latest_guess.word,
-                latest_guess.similarity,
-                latest_guess.submitted_at,
+            latest_submission = SubmissionSummary(
+                similarity=round(latest_guess.similarity, 4),
+                wordRank=latest_guess.word_rank,
             )
 
         users.append(UserInfo(

@@ -66,6 +66,11 @@ class SubmissionDetail(BaseModel):
     submittedAt: Optional[datetime] = None
 
 
+class SubmissionSummary(BaseModel):
+    similarity: float
+    wordRank: int
+
+
 class LeaderboardEntry(BaseModel):
     rank: int
     nickname: str
@@ -119,8 +124,8 @@ class UserInfo(BaseModel):
     name: str
     bestSimilarity: float
     rank: int
-    bestSubmission: Optional[SubmissionDetail] = None
-    latestSubmission: Optional[SubmissionDetail] = None
+    bestSubmission: Optional[SubmissionSummary] = None
+    latestSubmission: Optional[SubmissionSummary] = None
 
 
 class GameInfoResponse(BaseModel):
