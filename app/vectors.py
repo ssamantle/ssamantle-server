@@ -161,3 +161,17 @@ class VectorDB:
         except sqlite3.Error as e:
             logger.error("rank 조회 실패 — word=%s, error=%s", word, e)
             return RANK_UNRANKED
+
+    def get_word_similarity_and_rank(self, word: str) -> Optional[Tuple[float, int]]:
+        """사전 계산된 유사도와 순위를 반환한다. 단어가 없으면 None을 반환한다."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    "SELECT sim, rank FROM vectors WHERE word = ?", (word,)
+                ).fetchone()
+                if row is None:
+                    return None
+                return float(row[0]), int(row[1])
+        except sqlite3.Error as e:
+            logger.error("유사도·순위 조회 실패 — word=%s, error=%s", word, e)
+            return None
