@@ -4,6 +4,8 @@ from pathlib import Path
 import os
 
 
+BASE_DIR = Path(__file__).parent.parent.resolve()
+
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6380)
 
@@ -24,9 +26,9 @@ class Settings(BaseSettings):
     debug: bool = True
 
     # FastText 벡터 설정 (절대 경로)
-    vector_db_path: str = str(Path(__file__).parent.parent / "data" / "vectors.db")
-    words_list_path: str = str(Path(__file__).parent.parent / "data" / "filtered_words.txt")
-    secrets_path: str = str(Path(__file__).parent.parent / "data" / "daily_secrets_2026.json")
+    vector_db_path: str = str(BASE_DIR / "data" / "vectors.db")
+    words_list_path: str = str(BASE_DIR / "data" / "filtered_words.txt")
+    secrets_path: str = str(BASE_DIR / "data" / "daily_secrets_2026.json")
 
     # 데이터베이스
     database_url: str = "sqlite:///./data/semantle.db"
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-key-change-in-production"
 
     # 로깅
-    log_dir: str = "./logs"
+    log_dir: str = str(BASE_DIR / "data" / "logs")
     log_file_name: str = "app.log"
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 100
