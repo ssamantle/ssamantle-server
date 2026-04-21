@@ -1,7 +1,7 @@
 import redis
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
@@ -11,18 +11,22 @@ from app.config import get_settings
 from app.db.enums import GameStatus
 from app.db.models import Game, GuessHistory, Participant
 from app.schemas.game import LeaderboardEntry, SubmissionDetail
-from app.vectors import VectorDB
+
+if TYPE_CHECKING:
+    from app.vectors import VectorDB
 
 settings = get_settings()
 
 # ─── VectorDB 지연 초기화 ─────────────────────────────────────
-_vector_db: Optional[VectorDB] = None
+_vector_db: Optional["VectorDB"] = None
 
 
-def get_vector_db() -> VectorDB:
+def get_vector_db() -> "VectorDB":
     global _vector_db
     if _vector_db is None:
         try:
+            from app.vectors import VectorDB
+
             _vector_db = VectorDB(Path(settings.vector_db_path))
         except FileNotFoundError:
             raise HTTPException(
