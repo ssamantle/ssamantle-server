@@ -1,7 +1,6 @@
-import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -11,14 +10,15 @@ from app.api.routes import health, similarity
 from app.api.routes import users  # , games
 from app.api.v1 import games as games_v1
 from app.api.v1 import auth as auth_v1
+from app.utils.logging import (
+    reset_request_session_id,
+    resolve_session_id_from_request,
+    set_request_session_id,
+    setup_logging,
+)
 
 settings = get_settings()
-
-logging.basicConfig(
-    level=logging.DEBUG if settings.debug else logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+setup_logging(settings)
 
 
 @asynccontextmanager
@@ -34,6 +34,17 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def bind_request_logging_context(request: Request, call_next):
+    session_id = resolve_session_id_from_request(request)
+    token = set_request_session_id(session_id)
+    try:
+        response = await call_next(request)
+    finally:
+        reset_request_session_id(token)
+    return response
 
 # 세션 미들웨어 (쿠키 이름: SESSION)
 app.add_middleware(

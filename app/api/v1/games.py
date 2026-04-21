@@ -1,4 +1,3 @@
-import logging
 import uuid, json
 from datetime import datetime, timezone
 
@@ -39,8 +38,9 @@ from app.utils import (
     sync_game_status,
     get_game_or_404,
 )
+from app.utils.logging import getLogger
 
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/games", tags=["games-v1"])
 

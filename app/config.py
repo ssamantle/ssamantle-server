@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # 세션
     secret_key: str = "dev-secret-key-change-in-production"
 
+    # 로깅
+    log_dir: str = "./logs"
+    log_file_name: str = "app.log"
+    log_max_bytes: int = 10 * 1024 * 1024
+    log_backup_count: int = 100
+
     class Config:
         env_file = ".env"
         extra = "ignore"

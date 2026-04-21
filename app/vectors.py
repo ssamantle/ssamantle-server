@@ -1,4 +1,3 @@
-import logging
 import sqlite3
 import struct
 from pathlib import Path
@@ -6,7 +5,9 @@ from typing import Iterator, Optional, Tuple
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from app.utils.logging import getLogger
+
+logger = getLogger(__name__)
 
 VECTOR_DIMENSION = 300
 
