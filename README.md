@@ -87,8 +87,19 @@ semantle-server/
 # FastText 한국어 벡터 다운로드 (Meta에서 제공)
 wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.ko.300.vec.gz
 
-# 한국어 맞춤법 사전 다운로드 (선택사항)
-wget https://github.com/spellcheck-ko/hunspell-dict-ko/raw/master/ko-aff-dic-0.7.92.dic
+# 한국어 맞춤법 사전 다운로드 (선택사항, --hunspell-dic 옵션 사용 시 필요)
+curl -L -o ko-aff-dic.zip https://github.com/spellcheck-ko/hunspell-dict-ko/releases/download/0.7.92/ko-aff-dic-0.7.92.zip
+unzip ko-aff-dic.zip "*.dic" -d data/
+rm ko-aff-dic.zip
+```
+
+Windows PowerShell:
+```powershell
+Invoke-WebRequest -Uri https://github.com/spellcheck-ko/hunspell-dict-ko/releases/download/0.7.92/ko-aff-dic-0.7.92.zip -OutFile ko-aff-dic.zip
+Expand-Archive ko-aff-dic.zip -DestinationPath tmp_dic
+Copy-Item tmp_dic\*.dic data\
+Remove-Item tmp_dic -Recurse
+Remove-Item ko-aff-dic.zip
 ```
 
 ### 2. 단어 필터링
@@ -97,8 +108,8 @@ wget https://github.com/spellcheck-ko/hunspell-dict-ko/raw/master/ko-aff-dic-0.7
 # filter_words.py 실행 (원본 FastText-test 레포에서 복사)
 python scripts/filter_words.py --vec-path cc.ko.300.vec.gz \
   --output data/filtered_words.txt \
+  --hunspell-dic data/ko.dic \
   --use-kiwi
-  # --hunspell-dic ko-aff-dic-0.7.92.dic
 ```
 
 ### 3. 벡터 DB 생성

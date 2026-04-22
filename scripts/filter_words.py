@@ -1,6 +1,7 @@
 import argparse
 import gzip
 import re
+import unicodedata
 from pathlib import Path
 from typing import Iterable, Set
 
@@ -76,7 +77,7 @@ def load_hunspell_dic(dic_path: Path) -> Set[str]:
             expected = None
 
         for line in f:
-            word = line.strip().split("/")[0]
+            word = unicodedata.normalize("NFC", line.strip().split("/")[0])
             if word:
                 words.add(word)
     return words
