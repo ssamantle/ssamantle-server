@@ -8,8 +8,14 @@ ENV ENV=production
 WORKDIR /app
 
 RUN apt-get update && \
-    apt-get install -y wget && \
-    wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.ko.300.vec.gz
+    apt-get install -y wget unzip && \
+    wget https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.ko.300.vec.gz && \
+    wget -O ko-aff-dic.zip https://github.com/spellcheck-ko/hunspell-dict-ko/releases/download/0.7.92/ko-aff-dic-0.7.92.zip && \
+    mkdir -p data && \
+    unzip ko-aff-dic.zip "*.dic" -d data/ && \
+    mv data/ko-aff-dic-0.7.92/ko.dic data/ko.dic && \
+    rm -rf data/ko-aff-dic-0.7.92 && \
+    rm ko-aff-dic.zip
 
 COPY /scripts /app/scripts
 RUN pip install --no-cache-dir -r scripts/requirements.txt
@@ -18,6 +24,7 @@ RUN pip install --no-cache-dir -r scripts/requirements.txt
 RUN python scripts/filter_words.py \
     --vec-path cc.ko.300.vec.gz \
     --output data/filtered_words.txt \
+    --hunspell-dic data/ko.dic \
     --use-kiwi
 
 # process_vecs.py 실행 (원본 FastText-test 레포에서 복사)
