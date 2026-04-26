@@ -14,6 +14,7 @@ try:
     vector_db = VectorDB(Path(settings.vector_db_path))
 except FileNotFoundError:
     print("Warning: Vector database not found. Similarity features will not be available.")
+    exit(1)
 
 router = APIRouter(prefix="/api/similarity", tags=["similarity"])
 
