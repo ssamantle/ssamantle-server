@@ -11,9 +11,12 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - DATABASE_NAME=./data/semantle.db
+      - DATABASE_URL=postgresql://semantle:semantle@postgres:5432/semantle
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - server_data:/app/data
@@ -25,6 +28,23 @@ services:
     volumes:
       - redis_data:/data
     command: [ "redis-server", "--appendonly", "yes" ]
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=semantle
+      - POSTGRES_USER=semantle
+      - POSTGRES_PASSWORD=semantle
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U semantle" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 volumes:
   redis_data:
   server_data:
+  postgres_data:
