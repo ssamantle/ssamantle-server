@@ -72,12 +72,6 @@ app.include_router(users.router)
 app.include_router(games_v1.router)
 app.include_router(auth_v1.router)
 
-
-@app.on_event("startup")
-def startup():
-    create_tables()
-
-
 @app.get("/")
 async def root():
     return {
