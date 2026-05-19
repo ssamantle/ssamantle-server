@@ -58,4 +58,5 @@ EXPOSE 8000
 
 # Gunicorn + UvicornWorker 권장이지만 지금은 uvicorn을 사용하도록 함.
 # worker 수는 보통 (2 x CPU 코어 수) + 1 로 설정합니다.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["--workers", "4"]
