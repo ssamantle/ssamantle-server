@@ -6,6 +6,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./app
+          target: /app/app
+          initial_sync: true
+        - action: rebuild
+          path: requirements.txt
     restart: unless-stopped
     depends_on: [redis, postgres]
     ports: ["${GAME_SERVER_PORT}:8000"]
