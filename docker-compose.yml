@@ -15,7 +15,11 @@ services:
         - action: rebuild
           path: requirements.txt
     restart: unless-stopped
-    depends_on: [redis, postgres]
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     ports: ["${GAME_SERVER_PORT}:8000"]
     environment:
       - DEBUG=${DEBUG}
