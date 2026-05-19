@@ -32,13 +32,18 @@ services:
   postgres:
     container_name: ssamantle-server-dev-postgres
     image: postgres:latest
-    environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes: ["dev_postgres_data:/var/lib/postgres/data"]
     ports: ["${DB_PORT}:5432"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U semantle"]
       interval: 5s
       timeout: 5s
       retries: 5
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+
+volumes:
+  dev_postgres_data:
