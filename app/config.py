@@ -6,9 +6,6 @@ import os
 
 BASE_DIR = Path(__file__).parent.parent.resolve()
 
-REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
-REDIS_PORT = os.environ.get('REDIS_PORT', 6380)
-
 
 class Settings(BaseSettings):
     """애플리케이션 설정"""
@@ -31,10 +28,8 @@ class Settings(BaseSettings):
     secrets_path: str = str(BASE_DIR / "data" / "daily_secrets_2026.json")
 
     # 데이터베이스
-    database_url: str = "sqlite:///./data/semantle.db"
-
-    # Redis
-    redis_url: str = f"redis://{REDIS_HOST}:{REDIS_PORT}/0"
+    database_url: str = os.environ['DATABASE_URL']
+    redis_url: str = os.environ['REDIS_URL']
 
     # 세션
     secret_key: str = "dev-secret-key-change-in-production"
