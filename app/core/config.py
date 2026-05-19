@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 
 
-BASE_DIR = Path(__file__).parent.parent.resolve()
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
