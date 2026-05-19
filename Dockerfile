@@ -60,3 +60,6 @@ EXPOSE 8000
 # worker 수는 보통 (2 x CPU 코어 수) + 1 로 설정합니다.
 ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 CMD ["--workers", "4"]
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
