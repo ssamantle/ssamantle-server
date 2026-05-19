@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # 기본 설정
     app_name: str = "Semantle Server"
     app_version: str = "1.0.0"
+    app_description: str = "FastAPI 기반 백엔드 서비스"
 
     # 서버 설정
     host: str = "0.0.0.0"

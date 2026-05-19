@@ -29,7 +29,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    description="FastAPI 기반 백엔드 서비스",
+    description=settings.app_description,
     version=settings.app_version,
     debug=settings.debug,
     lifespan=lifespan,
