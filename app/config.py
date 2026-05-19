@@ -19,8 +19,7 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # 환경
-    environment: str = "development"
-    debug: bool = True
+    debug: bool = os.environ['DEBUG'].lower() in ['true', '1']
 
     # FastText 벡터 설정 (절대 경로)
     vector_db_path: str = str(BASE_DIR / "data" / "vectors.db")
@@ -32,7 +31,7 @@ class Settings(BaseSettings):
     redis_url: str = os.environ['REDIS_URL']
 
     # 세션
-    secret_key: str = "dev-secret-key-change-in-production"
+    secret_key: str = os.environ['SECRET']
 
     # 로깅
     log_dir: str = str(BASE_DIR / "data" / "logs")
