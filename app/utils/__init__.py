@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
-from app.config import get_settings
+from app.core.config import get_settings
 from app.db.enums import GameStatus
 from app.db.models import Game, GuessHistory, Participant
 from app.schemas.game import LeaderboardEntry, SubmissionDetail

@@ -5,7 +5,7 @@ from typing import Iterator, Optional, Tuple
 
 import numpy as np
 
-from app.utils.logging import getLogger
+from app.core.logger import getLogger
 
 logger = getLogger(__name__)
 

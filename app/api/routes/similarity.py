@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from pathlib import Path
 from app.vectors import VectorDB
-from app.config import get_settings
+from app.core.config import get_settings
 
 # 설정 로드
 settings = get_settings()

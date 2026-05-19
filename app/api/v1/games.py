@@ -38,7 +38,7 @@ from app.utils import (
     sync_game_status,
     get_game_or_404,
 )
-from app.utils.logging import getLogger
+from app.core.logger import getLogger
 
 logger = getLogger(__name__)
 

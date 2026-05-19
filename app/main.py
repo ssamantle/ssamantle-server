@@ -4,13 +4,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.config import get_settings
+from app.core.config import get_settings
 from app.db.database import create_tables
 from app.api.routes import health, similarity
 from app.api.routes import users  # , games
 from app.api.v1 import games as games_v1
 from app.api.v1 import auth as auth_v1
-from app.utils.logging import (
+from app.core.logger import (
     reset_request_session_id,
     resolve_session_id_from_request,
     set_request_session_id,

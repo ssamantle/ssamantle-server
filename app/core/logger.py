@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import Request
 
-from app.config import Settings
+from app.core.config import Settings
 
 
 ANONYMOUS_SESSION_ID = "anonymous"
