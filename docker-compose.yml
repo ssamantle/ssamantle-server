@@ -1,8 +1,8 @@
 version: "3.0"
 services:
   game_server:
-    container_name: dev-game-server
-    image: ssamantle-server:dev
+    container_name: ssamantle-game-dev-game-server
+    image: ssamantle-game-server:dev
     build:
       context: .
       dockerfile: Dockerfile
